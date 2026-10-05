@@ -28,7 +28,7 @@ def motion_detection(frame, min_area=400):
         frame_out = cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 200), 3)
     
     # Display the resulting frame
-    cv2.imshow('Frame_final', frame_out)
+    # cv2.imshow('Frame_final', frame_out)
 
     
 
