@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 VIDEO = "media/IMG_6660.MOV"
-ZONES_FILE = "zones.json"
+ZONES_FILE = "config/zones.json"
 COLORS = {"dock": (0, 165, 255), "water": (255, 100, 0)}  # BGR
 
 cam = cv2.VideoCapture(VIDEO)
