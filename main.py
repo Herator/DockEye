@@ -3,7 +3,10 @@ import json
 import os
 import numpy as np
 
-VIDEO = "media/IMG_6660.MOV"
+# Import function from motionDetection.py File
+from motionDetection import motion_detection
+
+VIDEO = "media/personInFrame.mp4"
 ZONES_FILE = "config/zones.json"
 COLORS = {"dock": (0, 165, 255), "water": (255, 100, 0)}  # BGR
 
@@ -43,9 +46,15 @@ while True:
     ret, frame = cam.read()
     if not ret:
         break
+    
+    #motion detection function 
+    motion_detection(frame)
+    
     for name, pts in zones.items():
         cv2.polylines(frame, [np.array(pts, np.int32)], True, COLORS[name], 4)
+    
     cv2.imshow("Video", frame)
+    
     if cv2.waitKey(int(1000 / fps)) == ord("q"):
         break
 
