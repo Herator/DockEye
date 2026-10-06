@@ -3,7 +3,7 @@
 
 ## Motion detection 1.0
 
-The first implementation was inspired by the approach presented by LearnOpenCV for moving object detection. The method started with ![backround substraction](https://learnopencv.com/moving-object-detection-with-opencv/) using OpenCV's MOG2 background subtractor to generate a foreground mask.
+The first implementation was inspired by the approach presented by LearnOpenCV for moving object detection. The method started with [backround substraction](https://learnopencv.com/moving-object-detection-with-opencv/) using OpenCV's MOG2 background subtractor to generate a foreground mask.
 
 ```
 backSub = cv2.createBackgroundSubtractorMOG2(detectShadows = True, varThreshold=30)
@@ -35,7 +35,7 @@ for cnt in large_contours:
     frame_out = cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 200), 2)
 ```
 
-This was a simple implementation that did the bear minimum for a motion detection. However the task is on a dock with waves in the bacground that moves. So it had a hard time not detect bacground. There for version 2.0 were designed. 
+This was a simple implementation that did the bear minimum for a motion detection. However the task is on a dock with waves in the backround that moves. So it had a hard time not get false detection of the backround. Therefor version 2.0 were designed. 
 
 
 ## Motion detection 2.0
@@ -44,7 +44,7 @@ To improve the motion detection wee needed something that chould ignore the move
 
 In our security survilence of the dock we chould say there is **two zones**. One for **the dock** and one for the **water**. 
 
-To make these sones we use click it sones like Herator implemented in the beginning. In this zones we need to make one for the dock and where we "assume" that we can detect people. And a zone where we can assume we can detect boats. Since we know that boats should not be on the dock and not on land we make a zone that removes these areas. In the photo below you can see the two zones. 
+To make these sones we use zones that we clicked the edges in like Herator implemented in the beginning. In this zones we need to make one for the dock and where we "assume" that we can detect people. And a zone where we can assume we can detect boats. Since we know that boats should not be on the dock and not on land we make a zone that removes these areas. In the photo below you can see the two zones. 
 
 ![image](images/twoZones.png)
 
@@ -56,3 +56,35 @@ This made us end up with:
 
 ![image](images/maskedBoatZone.png)
 ![image](images/maskedPersonZone.png)
+
+Since it was going to be configuring two zones the **motion_detection(frame, min_area)** function from version 1 needed some changes, and th eposibility to change configurations based on what zone it tries to detect motion in. 
+
+there was also made two new backSub and kernel to individual decide what threshold the different zones has. 
+```
+pearson_backSub = cv2.createBackgroundSubtractorMOG2(detectShadows = True, varThreshold=20)
+boat_backSub = cv2.createBackgroundSubtractorMOG2( detectShadows = True, varThreshold=50)
+
+pearson_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10))
+
+```
+
+
+### Motion detection 2.1
+
+Add gussion blurre to not detect waves as acceptable motion for the motion detection for boats. added it as one of the parameters for the **motion_detection(frame, zone, min_area, minValue, backSub, kernel, blurre=False)**
+The gussian blurred made it easier to not get false positive for waves. 
+
+The **mask_eroded** were also change to **mask_merge** since after testing it seemed liked it chould easier see the boat as one object rather than many objects. 
+
+
+
+### Motion detection 2.2
+
+**NOT DONE YET**
+
+Dont draw the mask for every frame. The program is wery slow. 
+
+
+# NB! 
+**An AI assistant (Claude) was used for guidance on approach and for help with parts of the code and debugging. The zone design, parameter tuning and the overall structure were done by us.**
