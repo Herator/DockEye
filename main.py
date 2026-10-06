@@ -1,6 +1,4 @@
 import cv2
-import json
-import os
 import numpy as np
 
 # Import function from other files File
@@ -10,7 +8,7 @@ from zones import make_zones, draw_the_zone
 # -------------------------------------
 #         GLOBAL VARIABLES
 # -------------------------------------
-VIDEO = "media/boatHuman.mp4"
+VIDEO = "media/nameOfVideo.mp4"
 ZONES_FILE = "config/zones.json"
 COLORS = {"dock": (0, 165, 255), "water": (255, 100, 0)}  # BGR
 
