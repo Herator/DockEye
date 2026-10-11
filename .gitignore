@@ -1,1 +1,4 @@
-meida/IMG_6660.MOV
+__pycache__/
+media/*.mp4
+media/*.MOV
+media/*.mov

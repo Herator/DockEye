@@ -8,10 +8,7 @@ from zones import make_zones, draw_the_zone
 # -------------------------------------
 #         GLOBAL VARIABLES
 # -------------------------------------
-VIDEO = "media/nameOfVideo.mp4"
-ZONES_FILE = "config/zones.json"
-COLORS = {"dock": (0, 165, 255), "water": (255, 100, 0)}  # BGR
-
+VIDEO = "media/Oscar.mp4"
 MD_ZONES_FILE = "config/MDZones.json"
 MD_COLORS = {"person": (0, 0, 255), "boat": (255, 0, 0)}
 
@@ -22,17 +19,21 @@ cam = cv2.VideoCapture(VIDEO)
 fps = cam.get(cv2.CAP_PROP_FPS) or 30
 ret, first = cam.read()
 
+# skip black frames at the start of the video
+while ret and first.mean() < 10:
+    ret, first = cam.read()
+if not ret:
+    raise SystemExit(f"{VIDEO} has no non-black frames")
+
 cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
 
 
 # ------------------------------------
 #                ZONES
 # ------------------------------------    
-basic_zones = make_zones(first, COLORS, ZONES_FILE)
 md_zones = make_zones(first, MD_COLORS, MD_ZONES_FILE)
 
 
-cam.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
 
 # Play with zones drawn on top
@@ -43,12 +44,6 @@ while True:
     
     #motion detection function:  WITHOUT different zones
     #motion_detection(frame) 
-    
-    # draw Dock and water zones
-    #draw_the_zone(frame, basic_zones, COLORS)
-       
-    # draw motion zones  
-    #draw_the_zone(frame, md_zones, MD_COLORS)  
     
     #person_view = motion_detection_mask(first, md_zones["person"])
     #cv2.imshow("Person zone", person_view) #SHOW MASK for where to not search for person
@@ -61,11 +56,14 @@ while True:
     
 
     for x, y, w, h in person_boxes:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 200), 2)
-        
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 165, 255), 2)  # orange (BGR)
+
     for x, y, w, h in boat_boxes:
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 200), 2)
-    
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 200, 0), 2)  # green (BGR)
+
+    # draw zones after detection so the lines aren't part of the motion input
+    draw_the_zone(frame, md_zones, MD_COLORS)
+
     cv2.imshow("Video", frame)
     
     if cv2.waitKey(int(1000 / fps)) == ord("q"):
