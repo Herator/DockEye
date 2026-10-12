@@ -1,0 +1,61 @@
+{
+  "title": "DockEye",
+  "slides": [
+    {
+      "title": "DockEye",
+      "subtitle": "Offline dock activity analysis — implementation and evaluation status",
+      "bullets": ["Oscar Skibrek · Herman Ardem · Tarik Sørensen · Ingeborg Briskodden", "One fixed camera. Recorded footage. Human review.", "Motion → model → tracking → events → review"],
+      "notes": "Vi presenterer problemet, den implementerte programflyten og hva som fortsatt må evalueres. Skill mellom programkode og dokumentert modellnøyaktighet."
+    },
+    {
+      "title": "Problem and goal",
+      "bullets": ["Understand when people use the dock and when boats pass.", "Distinguish walking and standing from fishing activity.", "Produce reviewable events, timestamps and supporting snapshots.", "Detect activity; do not identify people or decide whether access is authorised."],
+      "notes": "Det er forskjell på at noe beveger seg og hva personen faktisk gjør. Målet er å lage en etterprøvbar oversikt, ikke å identifisere personer eller avgjøre tillatelse."
+    },
+    {
+      "title": "Current release: what exists",
+      "bullets": ["Validated zones, per-zone MOG2 and explicit shadow removal.", "Local YOLO adapter, motion gating and active-track reclassification.", "Track IDs, temporal event logic and directional boat counting.", "CSV, event snapshots, annotated video and operator controls.", "Custom fishing model accuracy remains unverified; rod candidates are experimental."],
+      "notes": "Alle delene i programflyten er koblet sammen. Den generelle modellen kan finne personer og båter. Dette betyr ikke at vi har en validert egen modell som gjenkjenner fisking."
+    },
+    {
+      "title": "Architecture",
+      "bullets": ["Recorded video → validated dock/water zones → motion regions.", "Motion + active track crops → YOLO → optional rod candidate geometry.", "One-to-one tracking → temporal evidence / boat-line crossing.", "Confirmed output → CSV + one snapshot → operator review.", "Active tracks are revisited even when motion stops."],
+      "notes": "Videoen behandles ett bilde om gangen. Sonene og bakgrunnsmodellen foreslår områder. YOLO klassifiserer, trackeren gir ID-er, og hendelseslogikken vurderer observasjonene over videotid. Aktive spor går tilbake til modellen også når de står stille. Først ved bekreftet hendelse lagres CSV og bilde. Stangmetoden lager en separat mulig fiskehendelse."
+    },
+    {
+      "title": "Fishing: two different methods",
+      "bullets": ["Learned method: custom person_fishing class, trained on reviewed labels.", "Alternative: detect a person and a long angled line near the upper body/hands.", "Require repeated evidence over time; reset on negatives or long evidence gaps.", "Rod output is fishing_candidate, not verified fishing.", "Hooks, bags, branches and railings are important negative examples."],
+      "notes": "En lang linje nær en person kan være en stang, men vinkel alene beviser ikke fisking. Kandidatmetoden er kjørbar med en generell personmodell, men må evalueres. En egen fiskemodell trenger flere merkede opptak."
+    },
+    {
+      "title": "Project scope",
+      "bullets": ["In scope: one fixed camera and offline recordings of this dock.", "Detection, track continuity, line-crossing counts and event review.", "Optional measured dock-plane positions in metres; not body height.", "Daylight/dusk and wet/dry conditions are evaluation targets.", "Out of scope: live alerts, personal identity, night vision and multiple cameras."],
+      "notes": "Vi avgrenser prosjektet til ett fast kamera og behandling i etterkant. Hendelseslogging og gjennomgang er med. Vær og lys er forhold vi skal teste. Kalibrering gjelder målepunkter på bryggeplanet, ikke menneskehøyde. Direkte varsling, identifisering og flere kamera er utenfor."
+    },
+    {
+      "title": "Operator use cases",
+      "bullets": ["UC1: define zones once and reload them for the same view.", "UC2: analyse a clip, inspect boxes/IDs and tune motion parameters.", "UC3: review time-confirmed fishing or explicitly tentative rod candidates.", "UC4: count boats crossing a chosen line and compare with a manual count.", "UC5: inspect CSV and matching snapshots; export an annotated video."],
+      "notes": "Brukstilfellene beskriver hva operatøren gjør og hvilket resultat som kommer ut. Først soner, deretter analyse og justering. Så gjennomgang av hendelser og båttelling. Merking og trening er et separat utviklingsarbeidsløp."
+    },
+    {
+      "title": "Data and training workflow",
+      "bullets": ["Review labels: boat, person, person_fishing; include explicit negatives.", "Split by source recording/session, never neighbouring frames.", "Validate provenance and class coverage in train, validation and test.", "Fine-tune local pretrained YOLO weights; evaluate held-out clips.", "Public source footage is available; a reviewed three-class dataset is still needed."],
+      "notes": "En videofil med fisking i navnet er ikke et ferdig datasett. Vi trenger flere uavhengige opptak og kontrollerte merkelapper. Verktøyene avviser samme opptak eller kildegruppe i flere datasplitt. Den ene fiskefilen kan ikke fordeles tilfeldig bilde for bilde til trening og test."
+    },
+    {
+      "title": "Verification and remaining evidence",
+      "bullets": ["Automated tests cover video → tracking → event → CSV/snapshot/export.", "Actual pretrained inference found people in an official reference image.", "Synthetic one-epoch training produced weights and per-class reports.", "Synthetic training metrics were zero; this is not a useful fishing model.", "Dock accuracy, event recall and empty-dock false-positive rate remain to be measured."],
+      "notes": "Tester med en kontrollert detektor beviser hendelsesflyten, ikke modellens fiskegjenkjenning. Vi har også kjørt faktisk modellinferens og en liten treningskontroll. Den syntetiske treningen hadde null treffsikkerhet og skal ikke vises som en ferdig fiskemodell."
+    },
+    {
+      "title": "Risks and next work",
+      "bullets": ["Walking-person recording: 3 false rod candidates from background lines.", "Track IDs can change; once-per-ID counting is not global re-identification.", "Validate rod candidates against hooks, bags, diagonal structures and no-rod clips.", "Collect independent labelled fishing recordings and tune on validation only.", "Measure per-class precision/recall, event matches and false events per hour."],
+      "notes": "Testen av det ekte opptaket med en gående person ga tre falske stangkandidater. Kontroll av bildene viste bakgrunnslinjer, ikke fisking. Vi viser dette som en kjent begrensning. Vi bruker valideringsdata til justering og holder testopptakene til endelig måling."
+    },
+    {
+      "title": "Sources and demonstration",
+      "bullets": ["Implementation, tests and data schemas: Herator/DockEye, current branch.", "Ultralytics YOLO11n: official pretrained person/boat starting model.", "Project recordings: shared Drive folder linked from the repository.", "Roboflow fishing recognition: candidate source; access/licence/weights unverified.", "Demo: explain the model/method, show outputs, and distinguish candidates from confirmed fishing."],
+      "notes": "Se model-research.md for fullstendige lenker og hva vi faktisk fikk kontrollert. Den nye presentasjonen erstatter den gamle kombinasjonen av en trent modell, størrelsesklassifisering og en påstått Kalman-tracker."
+    }
+  ]
+}

@@ -1,7 +1,15 @@
-<<<<<<< Updated upstream
 __pycache__/
 media/*.mp4
 media/*.MOV
 media/*.mov
 
 .vscode/
+*.py[cod]
+.pytest_cache/
+.venv/
+runs/
+datasets/
+models/
+*.pt
+*.onnx
+*.mp4

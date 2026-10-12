@@ -1,4 +1,10 @@
 # Motion Detection 
+> Historical notes from the initial prototype. Current behaviour, connected model
+> tracking, corrected shadow filtering and limitations are documented in
+> [architecture.md](architecture.md) and [the README](../README.md). Statements
+> below about an unconnected tracker and per-frame mask display describe the old
+> release, not the current branch.
+
 *short explainatoin on how the motion detection is made*
 
 ## Motion detection 1.0

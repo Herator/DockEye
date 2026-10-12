@@ -81,3 +81,68 @@ def _union(a, b):
     x, y = min(a[0], b[0]), min(a[1], b[1])
     return (x, y, max(a[0] + a[2], b[0] + b[2]) - x, max(a[1] + a[3], b[1] + b[3]) - y)
 
+
+# Detector-driven tracker used by the application. The earlier empty-scene
+# Tracker above remains available for experiments but is not a Kalman filter.
+from dataclasses import dataclass
+from detector import family, iou
+
+
+@dataclass
+class ObjectTrack:
+    id: int
+    box: tuple
+    label: str
+    confidence: float
+    first_seen: float
+    last_seen: float
+    observed: bool = True
+
+
+class ObjectTracker:
+    """One-to-one association with a bounded grace period for missed detections.
+
+    Person/fishing class changes keep the same ID. This does not guarantee
+    re-identification after occlusion or leaving the frame.
+    """
+    def __init__(self, max_gap=1.0, match_iou=0.1, max_distance=80):
+        self.max_gap, self.match_iou, self.max_distance = max_gap, match_iou, max_distance
+        self.tracks = {}
+        self.next_id = 1
+
+    def update(self, detections, timestamp, observed=True):
+        self.tracks = {tid: track for tid, track in self.tracks.items()
+                       if timestamp-track.last_seen <= self.max_gap}
+        for track in self.tracks.values():
+            track.observed = False
+        if not observed:
+            return list(self.tracks.values())
+        pairs = []
+        for index, detection in enumerate(detections):
+            x, y, w, h = detection.box
+            for tid, track in self.tracks.items():
+                if family(track.label) != family(detection.label):
+                    continue
+                tx, ty, tw, th = track.box
+                overlap = iou(track.box, detection.box)
+                distance = ((x+w/2-tx-tw/2)**2 + (y+h/2-ty-th/2)**2)**0.5
+                if overlap >= self.match_iou or distance <= self.max_distance:
+                    pairs.append((overlap-distance/10000, index, tid))
+        used_detections, used_tracks = set(), set()
+        for _, index, tid in sorted(pairs, reverse=True):
+            if index in used_detections or tid in used_tracks:
+                continue
+            detection, track = detections[index], self.tracks[tid]
+            track.box, track.label, track.confidence = detection.box, detection.label, detection.confidence
+            track.last_seen, track.observed = timestamp, True
+            used_detections.add(index)
+            used_tracks.add(tid)
+        for index, detection in enumerate(detections):
+            if index not in used_detections:
+                tid = self.next_id
+                self.next_id += 1
+                self.tracks[tid] = ObjectTrack(
+                    tid, detection.box, detection.label, detection.confidence,
+                    timestamp, timestamp)
+        return list(self.tracks.values())
+
