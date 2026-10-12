@@ -41,8 +41,8 @@ def collect(args):
 
 class Player:
     TRANSPORT = [
-        ("|<", "prev"), ("<<10s", "back10"), ("<", "stepb"), ("Play/Pause", "play"),
-        (">", "stepf"), ("10s>>", "fwd10"), (">|", "next"), ("Slower", "slower"), ("Faster", "faster"),
+        ("|<", "prev"), ("<<10s", "back10"), ("<-", "stepb"), ("Play/Pause", "play"),
+        ("->", "stepf"), ("10s>>", "fwd10"), (">|", "next"), ("Slower", "slower"), ("Faster", "faster"),
     ]
     TOGGLES = [("Videos", "list"), ("Info", "info"), ("Flip", "flip"),
                ("Boxes", "boxes"), ("Loop", "loop")]
@@ -54,7 +54,7 @@ class Player:
         self.cap = None
         self.paused = False
         self.speed = 1.0
-        self.toggles = {"list": len(paths) > 1, "info": True, "flip": False,
+        self.toggles = {"list": False, "info": True, "flip": False,
                         "boxes": False, "loop": False}
         self.list_scroll = 0
         self.video_h = 540
@@ -226,17 +226,19 @@ class Player:
     def sync_trackbar(self):
         val = int(self.pos / max(self.n - 1, 1) * 1000)
         self.updating_bar = True
-        cv2.setTrackbarPos("Seek", WIN, val)
+        cv2.setTrackbarPos("Frame", WIN, val)
         self.updating_bar = False
 
     # ---------- main loop ----------
     def run(self):
         cv2.namedWindow(WIN, cv2.WINDOW_AUTOSIZE)
         cv2.setMouseCallback(WIN, self.on_mouse)
-        cv2.createTrackbar("Seek", WIN, 0, 1000, self.on_trackbar)
+        cv2.createTrackbar("Frame", WIN, 0, 1000, self.on_trackbar)
 
         keymap = {
-            ord(" "): "play", ord("a"): "stepb", ord("d"): "stepf", ord("j"): "back10",
+            # arrow codes from waitKeyEx: Windows (0x250000/0x270000), Linux GTK (65361/65363)
+            0x250000: "stepb", 0x270000: "stepf", 65361: "stepb", 65363: "stepf",
+            ord(" "): "play", ord("j"): "back10",
             ord("l"): "fwd10", ord("p"): "prev", ord("n"): "next", ord("-"): "slower",
             ord("+"): "faster", ord("="): "faster", ord("i"): "info",
             ord("f"): "flip", ord("o"): "boxes", ord("r"): "loop", ord("v"): "list",
@@ -265,7 +267,9 @@ class Player:
             wait = max(1, int((frame_time - (time.perf_counter() - t0)) * 1000))
             if self.paused:
                 wait = 30
-            key = cv2.waitKey(wait) & 0xFF
+            key = cv2.waitKeyEx(wait)  # waitKey drops arrow keys
+            if key not in keymap:
+                key &= 0xFF
             if key in (ord("q"), 27):
                 break
             if key in keymap:
