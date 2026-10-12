@@ -69,8 +69,14 @@ boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10))
 
 ```
 
+It also uses the motion_detection_maske to make mask in the desired zone. inside of the **motion_detection(frame, zone, min_area, minValue, backSub, kernel)**. (*THIS IS A PROBLEM FOR LATER*)
+
+Then we call on the function inside main and drawes the sones. 
+
 
 ### Motion detection 2.1
+
+Motion detection still gives false positive so, changed a lot of configuration to try to find best methode to do it. changing **min_area**, treshold and etc.:
 
 Add gussion blurre to not detect waves as acceptable motion for the motion detection for boats. added it as one of the parameters for the **motion_detection(frame, zone, min_area, minValue, backSub, kernel, blurre=False)**
 The gussian blurred made it easier to not get false positive for waves. 
