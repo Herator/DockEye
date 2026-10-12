@@ -57,7 +57,7 @@ def motion_detection(frame, zone, min_area, minValue, backSub, kernel, blurre=Fa
      
     # Look at black white movement       
     #cv2.imshow("fg_mask raw", fg_mask)  #before shadow is removed
-    cv2.imshow("Mask merged", mask_merged)
+    #cv2.imshow("Mask merged", mask_merged)
     return box
 
 
