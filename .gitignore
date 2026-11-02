@@ -1,7 +1,10 @@
-<<<<<<< Updated upstream
 __pycache__/
-media/*.mp4
-media/*.MOV
-media/*.mov
-
+.venv/
+.DS_Store
+media/**/*.[mM][pP]4
+media/**/*.[mM][oO][vV]
+media/**/*.[aA][vV][iI]
+media/**/*.[mM][kK][vV]
+media/**/*.[wW][eE][bB][mM]
+model/
 .vscode/
