@@ -1,8 +1,10 @@
 __pycache__/
 .venv/
 .DS_Store
-media/*.mp4
-media/*.MOV
-media/*.mov
+media/**/*.[mM][pP]4
+media/**/*.[mM][oO][vV]
+media/**/*.[aA][vV][iI]
+media/**/*.[mM][kK][vV]
+media/**/*.[wW][eE][bB][mM]
 model/
 .vscode/
