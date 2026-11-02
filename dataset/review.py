@@ -36,7 +36,7 @@ img{max-width:100%;max-height:100%;object-fit:contain;image-rendering:auto}.deta
 .status{font-weight:700;color:#23653e}.incorrect .status{color:#b52323}small{color:#526273;overflow-wrap:anywhere}
 </style></head><body><main><h1>Boat classifier review</h1>
 <p>TEST_COUNT test images · MISTAKES incorrect · Errors shown first</p>
-<div class="notice">This is an image-level split. Similar frames may be in both training and test sets, so this is not an evaluation on unseen video. Actual labels come from the dataset folders.</div>
+<div class="notice">These images were split individually, so similar frames may appear in both sets. This doesn't measure how the model performs on a new video. The labels come from the dataset folders.</div>
 <section class="grid" aria-label="Test predictions">CARDS</section></main></body></html>'''
     page = page.replace('TEST_COUNT', str(len(predictions))).replace('MISTAKES', str(mistakes)).replace('CARDS', '\n'.join(cards))
     Path(output).write_text(page, encoding='utf-8')
