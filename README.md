@@ -2,18 +2,85 @@
 
 DockEye finds people on the dock and boats passing it in recorded video, and logs when they were there. Motion detection, with separate zones for the dock and the water, decides when to look. A pretrained YOLO model decides what is there.
 
-## Setup and playback
+## Installation
 
-Use Python 3.10 or newer. From the project folder, run:
+You need Python 3.10 or newer and Git. The first run also needs internet, to download the YOLO model.
+
+1. Clone the repo and go into it:
+
+   ```sh
+   git clone <repo url>
+   cd dockeye
+   ```
+
+2. Make a virtual environment and install the packages. This pulls in PyTorch, so it can take a few minutes.
+
+   Windows (PowerShell):
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   python -m pip install -r requirements.txt
+   ```
+
+   macOS / Linux:
+   ```sh
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python -m pip install -r requirements.txt
+   ```
+
+3. Get the videos. They are too big for GitHub, so they're on our [Google Drive](https://drive.google.com/drive/folders/1Uu5GTa6J6cQnodDX9FfMKCCXSiRi4DZO?usp=sharing) (the link is also in `media/videos_link.txt`). Download them into the `media/` folder. Git ignores video files there.
+
+4. Run it:
+
+   ```sh
+   python main.py
+   ```
+
+   This plays every video in `media/`. To play just one, give its path: `python main.py media/boat_1.mp4`.
+
+## First run
+
+The first time, it downloads `yolo26s.pt` to `model/` and converts it to ONNX, which takes about 20 seconds. After that it starts straight away.
+
+The dock and water zones for our camera are already saved in `config/MDZones.json`. If you use your own footage from another camera, delete that file. On the next run you get asked to click the corners of the dock zone and then the water zone, pressing Enter after each one.
+
+Events end up in `output/events.csv` and snapshots in `output/snapshots/`.
+
+## Controls
+
+| Key | What it does |
+|---|---|
+| Space | Play / pause |
+| Left / Right arrow | One frame back / forward |
+| `j` / `l` | 10 seconds back / forward |
+| `p` / `n` | Previous / next video |
+| `-` / `+` | Slower / faster |
+| `v` | Show the video list (click one to play it) |
+| `o` | Detection on/off |
+| `i` | Info text on/off |
+| `r` | Loop the video |
+| `f` | Flip the image |
+| `q` or Esc | Quit |
+
+All of these are also buttons under the video.
+
+## Running the tests
+
+From the project folder, with the virtual environment active:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python main.py
+python -m unittest discover -s tests
 ```
 
-Put the videos in `media/`, or pass their paths to `main.py`. The supported video formats in `media/` are ignored by Git. Zone settings are saved in `config/MDZones.json`.
+All 10 tests should pass.
+
+## If something goes wrong
+
+- `module 'cv2' has no attribute 'ml'`: you have OpenCV 5, which doesn't have the part the boat classifier needs. Run `python -m pip install "opencv-python>=4.10,<5"`. A fresh install from `requirements.txt` already gets version 4.
+- `No videos found in 'media/'`: the videos aren't downloaded yet, see step 3.
+- PowerShell won't run `Activate.ps1`: run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then try again.
+- The video plays slower than normal: that's YOLO using the CPU. It runs at about 24-28 fps on our laptops while something is happening. Close other heavy programs, or press `o` to turn detection off.
 
 ## How it works
 
