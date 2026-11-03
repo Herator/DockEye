@@ -8,3 +8,4 @@ media/**/*.[mM][kK][vV]
 media/**/*.[wW][eE][bB][mM]
 model/
 .vscode/
+output/

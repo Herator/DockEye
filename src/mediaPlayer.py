@@ -1,7 +1,4 @@
-# Media player module
-# Option to select what media to play
-# Basic buttons like pause, player, forward, backward
-# Toggl buttons for zones and boxes
+# Video player with a toggle that runs detection on each frame.
 
 import glob
 import os
@@ -11,7 +8,7 @@ import time
 import cv2
 import numpy as np
 
-# Folder (or list of files) to play. Used when no command-line arguments are given.
+# used when no paths are given on the command line
 VIDEO_PATH = "../media/"
 
 VIDEO_EXTS = (".mp4", ".avi", ".mov", ".mkv", ".webm")
@@ -20,12 +17,6 @@ W = 960          # display width of the video area
 ROW_H = 36       # height of each button row
 BAR_H = ROW_H * 2 + 10
 LIST_TOP, LIST_ROW, LIST_W = 40, 26, 420   # video list overlay layout
-
-
-def boxes_frame(frame):
-    """Put your own per-frame boxesing here (detection, drawing, etc.).
-    It only runs while the 'boxes' toggle is on."""
-    return cv2.Canny(frame, 100, 200) if False else frame  # <- replace
 
 
 def collect(args):
@@ -47,7 +38,7 @@ class Player:
     TOGGLES = [("Videos", "list"), ("Info", "info"), ("Flip", "flip"),
                ("Boxes", "boxes"), ("Loop", "loop")]
 
-    def __init__(self, paths, boxes=boxes_frame):
+    def __init__(self, paths, boxes=lambda frame: frame):
         self.paths = paths
         self.boxes = boxes
         self.cache_key, self.cache = None, None
@@ -172,8 +163,7 @@ class Player:
         return bar
 
     def render(self):
-        # only boxes each frame once, so pausing doesn't feed the same frame
-        # to the background subtractors over and over
+        # detect once per frame, pausing shouldn't feed MOG2 the same frame
         key = (self.i, self.pos, self.toggles["flip"], self.toggles["boxes"])
         if key != self.cache_key:
             f = self.frame.copy()
@@ -231,6 +221,9 @@ class Player:
 
     # ---------- main loop ----------
     def run(self):
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.WinDLL("winmm").timeBeginPeriod(1)  # else waitKey sleeps 15 ms minimum
         cv2.namedWindow(WIN, cv2.WINDOW_AUTOSIZE)
         cv2.setMouseCallback(WIN, self.on_mouse)
         cv2.createTrackbar("Frame", WIN, 0, 1000, self.on_trackbar)
@@ -244,9 +237,8 @@ class Player:
             ord("f"): "flip", ord("o"): "boxes", ord("r"): "loop", ord("v"): "list",
         }
 
+        next_t = time.perf_counter()
         while not self.quit:
-            t0 = time.perf_counter()
-
             if self.seek_req is not None:
                 self.seek(self.seek_req / 1000 * (self.n - 1))
                 self.seek_req = None
@@ -263,10 +255,13 @@ class Player:
             if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) < 1:
                 break
 
-            frame_time = 1.0 / (self.fps * self.speed)
-            wait = max(1, int((frame_time - (time.perf_counter() - t0)) * 1000))
             if self.paused:
-                wait = 30
+                wait, next_t = 30, time.perf_counter()
+            else:
+                # running deadline, so if waitKey oversleeps the next frame makes up for it
+                frame_time = 1.0 / (self.fps * self.speed)
+                next_t = max(next_t + frame_time, time.perf_counter() - frame_time)  # max 1 frame behind
+                wait = max(1, int((next_t - time.perf_counter()) * 1000))
             key = cv2.waitKeyEx(wait)  # waitKey drops arrow keys
             if key not in keymap:
                 key &= 0xFF

@@ -1,0 +1,9 @@
+# Distant boats are ~35x12 px and their boxes barely overlap between runs, so accept small overlaps.
+# "dockeye" is DockTracker in src/detector.py.
+tracker_type: dockeye
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 30
+match_thresh: 0.95
+fuse_score: False
