@@ -22,43 +22,25 @@ pearson_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10,10))
 
 
-def motion_detection(frame, zone, min_area, minValue, backSub, kernel, blurre=False):
-    
-    if blurre:
-        frame = cv2.GaussianBlur(frame,(21, 21),0)
-     
-    # 1. Background subtraction
-    fg_mask = backSub.apply(frame)
-    
-    # 2. Keep only pure white (removes grey shadows)
-    _, mask_thresh = cv2.threshold(fg_mask, minValue, 255, cv2.THRESH_BINARY) # cv2.threshold(fg_mask, replace all values under x to 0, 255, cv2.THRESH_BINARY )
-
-    # uses motion_detection_maske to make mask in the desired zone. 
+def boxes_from_foreground(fg_mask, zone, min_area, threshold, kernel, shadow_only=False):
+    """Apply the selected mask and return boxes and the mask before zoning."""
+    if shadow_only:
+        mask_thresh = cv2.inRange(fg_mask, 127, 127)
+    else:
+        _, mask_thresh = cv2.threshold(fg_mask, threshold, 255, cv2.THRESH_BINARY)
     masked_zone = motion_detection_mask(mask_thresh, zone)
-
-    # 3.  Closing: connects nearby foreground regions
-    mask_merged = cv2.morphologyEx(masked_zone, cv2.MORPH_CLOSE, kernel,)
-    
-    # 4. Find contours
+    mask_merged = cv2.morphologyEx(masked_zone, cv2.MORPH_CLOSE, kernel)
     contours, _ = cv2.findContours(mask_merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    min_contour_area = min_area # minimum area treshold
-    large_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_contour_area]
-    
-    #frame_out = frame.copy()
-    #for cnt in large_contours:
-    #    x, y, w, h = cv2.boundingRect(cnt)
-    #    frame_out = cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 200), 2)
-    
-    box = []
-    for cnt in large_contours:
-            x, y, w, h = cv2.boundingRect(cnt)
-            box.append((x,y,w,h))
-     
-    # Look at black white movement       
-    #cv2.imshow("fg_mask raw", fg_mask)  #before shadow is removed
-    #cv2.imshow("Mask merged", mask_merged)
-    return box
+    boxes = [cv2.boundingRect(cnt) for cnt in contours if cv2.contourArea(cnt) > min_area]
+    return boxes, mask_thresh
+
+
+def motion_detection(frame, zone, min_area, minValue, backSub, kernel, blurre=False):
+    if blurre:
+        frame = cv2.GaussianBlur(frame, (21, 21), 0)
+    fg_mask = backSub.apply(frame)
+    boxes, _ = boxes_from_foreground(fg_mask, zone, min_area, minValue, kernel)
+    return boxes
 
 
     
