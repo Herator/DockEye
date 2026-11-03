@@ -9,3 +9,4 @@ media/**/*.[wW][eE][bB][mM]
 model/
 .vscode/
 output/
+dataset/fishing_cls/

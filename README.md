@@ -41,6 +41,8 @@ YOLO runs through ONNX Runtime, which was about twice as fast as PyTorch on our 
 
 The plan was to tell people fishing apart from people just standing on the dock. We wrote a classifier for it, but we only had one clip with someone fishing. That isn't enough to train it and then test it on clips it hasn't seen, so we couldn't make it reliable and took it out. The online datasets we found didn't help much either. They are mostly close-up photos, and our camera sees people far away and from the side. To get it working you would need more of your own clips with people fishing, plus negatives like someone carrying a boat hook or a long bag.
 
+The fishing code is kept in `vault/` together with our first tracker, and the lines that used it in `main.py` are commented out. See `vault/README.md` for how to bring it back.
+
 ## Boat classifier experiment
 
 This experiment trains an OpenCV linear SVM to tell boat images from background images. It resizes the images in `dataset/boat/` and `dataset/background/` to 32×32 pixels and converts them to grayscale. Exact duplicate images are removed before an 80/20 train/test split.

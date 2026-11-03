@@ -5,6 +5,7 @@ import cv2
 
 FIELDS = ["video", "class", "id", "event", "start_s", "end_s", "duration_s", "snapshot"]
 EVENT_NAME = {"person": "person_on_dock", "boat": "boat_passed"}
+# EVENT_NAME["person_fishing"] = "fishing"  # fishing dropped
 
 
 class EventLog:

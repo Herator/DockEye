@@ -8,6 +8,7 @@ from src.zones import make_zones, draw_the_zone
 from src.mediaPlayer import Player, collect
 from src.detector import Detector
 from src.events import EventLog
+# from src.fishing import FishingClassifier  # fishing dropped, see vault/
 
 # -------------------------------------
 #             SETTINGS
@@ -16,6 +17,7 @@ MEDIA = "media/"
 MD_ZONES_FILE = "config/MDZones.json"
 MD_COLORS = {"person": (0, 0, 255), "boat": (255, 0, 0)}  # zone outlines
 COLORS = {"person": (0, 165, 255), "boat": (0, 200, 0)}    # boxes (BGR)
+# COLORS["person_fishing"] = (0, 0, 255)  # fishing dropped
 
 MOTION_SCALE = 0.5  # motion only wakes us up, half size is enough
 MOTION_EVERY = 2    # every 2nd frame is enough too
@@ -60,6 +62,13 @@ log = EventLog()
 yolo = ThreadPoolExecutor(max_workers=1)  # background, so the video never waits for YOLO
 state = {}
 
+# fishing dropped: to bring it back, uncomment this and submit run_yolo further down.
+# fishing = FishingClassifier()
+#
+# def run_yolo(detector, frame):
+#     tracks = detector.track(frame)
+#     tracks["person_fishing"] = {i: b for i, b in tracks["person"].items() if fishing.is_fishing(frame, b)}
+#     return tracks
 
 
 def detect(frame):
@@ -102,6 +111,7 @@ def detect(frame):
     if state["job"] is None and t - state["last_yolo"] >= every:
         state.update(last_yolo=t, job_t=t, job_frame=frame.copy())  # copy, we draw on frame below
         state["job"] = yolo.submit(state["detector"].track, state["job_frame"])
+        # state["job"] = yolo.submit(run_yolo, state["detector"], state["job_frame"])  # fishing dropped
 
     if state["awake"] and t - state["last_active"] > IDLE_S:
         state.update(awake=False, tracks={})
@@ -115,6 +125,7 @@ def detect(frame):
     status = "AWAKE" if state["awake"] else "SLEEPING"
     cv2.putText(frame, f"{status}  Boats: {log.count.get('boat', 0)}  People: {log.count.get('person', 0)}",
                 (10, frame.shape[0] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+    # fishing dropped, the status line used to end with:  Fishing: {log.count.get('person_fishing', 0)}
 
     # zones last, or the lines would count as motion
     draw_the_zone(frame, md_zones, MD_COLORS)
