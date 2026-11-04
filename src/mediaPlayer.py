@@ -1,9 +1,11 @@
-# Video player with a toggle that runs detection on each frame.
+# Video and live camera player with a toggle that runs detection on each frame.
 
 import glob
 import os
 import sys
+import threading
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -17,6 +19,7 @@ W = 960          # display width of the video area
 ROW_H = 36       # height of each button row
 BAR_H = ROW_H * 2 + 10
 LIST_TOP, LIST_ROW, LIST_W = 40, 26, 420   # video list overlay layout
+BUFFER_S = 120   # how far back you can go on a live camera. JPEGs in memory, roughly 1-3 MB per second
 
 
 def collect(args):
@@ -30,10 +33,19 @@ def collect(args):
     return sorted(paths)
 
 
+def capture(path):
+    """A video file, a stream URL (rtsp://...) or a camera number like '0'."""
+    return cv2.VideoCapture(int(path) if path.isdigit() else path)
+
+
+def display_name(path):
+    return f"Live camera {path}" if path.isdigit() else os.path.basename(path)
+
+
 class Player:
     TRANSPORT = [
         ("|<", "prev"), ("<<10s", "back10"), ("<-", "stepb"), ("Play/Pause", "play"),
-        ("->", "stepf"), ("10s>>", "fwd10"), (">|", "next"), ("Slower", "slower"), ("Faster", "faster"),
+        ("->", "stepf"), ("10s>>", "fwd10"), ("Live", "live"), (">|", "next"), ("Slower", "slower"), ("Faster", "faster"),
     ]
     TOGGLES = [("Videos", "list"), ("Info", "info"), ("Flip", "flip"),
                ("Boxes", "boxes"), ("Loop", "loop")]
@@ -43,6 +55,7 @@ class Player:
         self.boxes = boxes
         self.cache_key, self.cache = None, None
         self.cap = None
+        self.thread = None
         self.paused = False
         self.speed = 1.0
         self.toggles = {"list": False, "info": True, "flip": False,
@@ -56,17 +69,83 @@ class Player:
 
     # ---------- video handling ----------
     def open(self, i):
-        if self.cap is not None:
-            self.cap.release()
+        self.close()
         self.i = i % len(self.paths)
-        self.cap = cv2.VideoCapture(self.paths[self.i])
-        self.n = max(int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)), 1)
+        self.cap = capture(self.paths[self.i])
+        count = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        self.live = count <= 0  # cameras and streams have no length
+        self.n = 0 if self.live else int(count)  # live: frames recorded so far
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+        self.t0 = self.frame_t = time.perf_counter()
         self.frame = None
         self.pos = -1
-        self.next_frame()
+        if self.live:
+            self.buf = deque(maxlen=int(BUFFER_S * self.fps))  # (time, jpeg)
+            self.latest, self.ended, self.recording = None, False, True
+            self.new = threading.Condition()
+            self.thread = threading.Thread(target=self.record, daemon=True)
+            self.thread.start()
+        if not self.next_frame():  # no camera, or a broken file
+            self.frame = np.zeros((540, W, 3), np.uint8)
+            cv2.putText(self.frame, f"Could not open {display_name(self.paths[self.i])}", (20, 270),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+
+    def close(self):
+        if self.thread is not None:
+            self.recording = False
+            self.thread.join(timeout=2)
+            self.thread = None
+        if self.cap is not None:
+            self.cap.release()
+
+    def record(self):
+        """Live: reads the camera all the time, also while paused or watching the past."""
+        while self.recording:
+            ok, f = self.cap.read()
+            if not ok:
+                break
+            jpg = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 85])[1]
+            with self.new:
+                self.buf.append((time.perf_counter(), jpg))
+                self.latest = f
+                self.n += 1
+                if len(self.buf) > 30:  # cameras often deliver fewer fps than they report
+                    self.fps = (len(self.buf) - 1) / (self.buf[-1][0] - self.buf[0][0])
+                self.new.notify()
+        with self.new:
+            self.ended = True
+            self.new.notify()
+
+    def bounds(self):
+        """First and last frame you can go to."""
+        return (self.n - len(self.buf), self.n - 1) if self.live else (0, self.n - 1)
+
+    def at_live_edge(self):
+        return self.live and self.pos >= self.n - 1
+
+    def show(self, pos, wait=False):
+        """Live: show frame pos from the buffer. wait: block until the camera has it."""
+        with self.new:
+            if wait:
+                self.new.wait_for(lambda: self.n > pos or self.ended, timeout=5)
+            first, last = self.bounds()
+            pos = max(first, min(last, int(pos)))
+            if last < 0 or (wait and pos == self.pos):
+                return False  # nothing new from the camera
+            t, jpg = self.buf[pos - first]
+            latest = self.latest if pos == last else None  # live: skip the decode and the JPEG blur
+        self.frame = latest if latest is not None else cv2.imdecode(jpg, cv2.IMREAD_COLOR)
+        self.pos, self.frame_t = pos, t
+        return True
+
+    @property
+    def t(self):
+        """Seconds into the video, or since the camera was opened."""
+        return self.frame_t - self.t0 if self.live else self.pos / self.fps
 
     def next_frame(self):
+        if self.live:
+            return self.show(self.pos + 1, wait=True)
         ok, f = self.cap.read()
         if ok:
             self.frame = f
@@ -74,6 +153,8 @@ class Player:
         return ok
 
     def seek(self, pos):
+        if self.live:
+            return self.show(pos)
         pos = max(0, min(self.n - 1, int(pos)))
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
         ok, f = self.cap.read()
@@ -98,6 +179,8 @@ class Player:
         elif name == "stepf":
             self.paused = True
             self.next_frame()
+        elif name == "live":
+            self.seek(self.n - 1)  # newest frame, or the last one in a video
         elif name == "play":
             self.paused = not self.paused
         elif name == "slower":
@@ -125,7 +208,7 @@ class Player:
         in_video = y < self.video_h
         # scroll the video list with the mouse wheel
         if event == cv2.EVENT_MOUSEWHEEL and in_video and self.toggles["list"]:
-            step = -1 if cv2.getMouseWheelDelta(flags) > 0 else 1
+            step = -1 if flags > 0 else 1  # same sign as the wheel delta, getMouseWheelDelta is gone in OpenCV 5
             max_scroll = max(0, len(self.paths) - self.list_rows())
             self.list_scroll = max(0, min(max_scroll, self.list_scroll + step))
             return
@@ -154,6 +237,9 @@ class Player:
             if action == "play":
                 label = "Play" if self.paused else "Pause"
             on = self.toggles.get(action, False)
+            if action == "live":
+                label = "Live" if self.live else "End"
+                on = self.live and not self.at_live_edge()  # lit while you're behind live
             color = (200, 120, 40) if on else (80, 80, 80)
             cv2.rectangle(bar, (x0, y0), (x1, y1), color, -1)
             cv2.rectangle(bar, (x0, y0), (x1, y1), (150, 150, 150), 1)
@@ -177,10 +263,14 @@ class Player:
         f = cv2.resize(f, (W, h))
         self.video_h = h
         if self.toggles["info"]:
-            t = self.pos / self.fps
-            txt = (f"{os.path.basename(self.paths[self.i])} "
-                   f"[{self.i + 1}/{len(self.paths)}]  frame {self.pos + 1}/{self.n}  "
-                   f"{t:.1f}s  x{self.speed:g}  {'PAUSED' if self.paused else 'PLAYING'}")
+            if self.at_live_edge():
+                where = f"LIVE  {self.t:.0f}s"
+            elif self.live:
+                where = f"LIVE -{time.perf_counter() - self.frame_t:.1f}s (recording)  x{self.speed:g}"
+            else:
+                where = f"frame {self.pos + 1}/{self.n}  {self.t:.1f}s  x{self.speed:g}"
+            txt = (f"{display_name(self.paths[self.i])} "
+                   f"[{self.i + 1}/{len(self.paths)}]  {where}  {'PAUSED' if self.paused else 'PLAYING'}")
             cv2.putText(f, txt, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4, cv2.LINE_AA)
             cv2.putText(f, txt, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
         if self.toggles["list"]:
@@ -207,14 +297,15 @@ class Player:
             y = LIST_TOP + r * LIST_ROW
             if idx == self.i:
                 cv2.rectangle(f, (0, y), (LIST_W, y + LIST_ROW - 2), (200, 120, 40), -1)
-            name = os.path.basename(self.paths[idx])
-            if len(name) > 48:
-                name = name[:45] + "..."
-            cv2.putText(f, name, (10, y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            label = display_name(self.paths[idx])
+            if len(label) > 48:
+                label = label[:45] + "..."
+            cv2.putText(f, label, (10, y + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 1, cv2.LINE_AA)
 
     def sync_trackbar(self):
-        val = int(self.pos / max(self.n - 1, 1) * 1000)
+        first, last = self.bounds()
+        val = int((self.pos - first) / max(last - first, 1) * 1000)
         self.updating_bar = True
         cv2.setTrackbarPos("Frame", WIN, val)
         self.updating_bar = False
@@ -231,6 +322,7 @@ class Player:
         keymap = {
             # arrow codes from waitKeyEx: Windows (0x250000/0x270000), Linux GTK (65361/65363)
             0x250000: "stepb", 0x270000: "stepf", 65361: "stepb", 65363: "stepf",
+            0x230000: "live", 65367: "live",  # End
             ord(" "): "play", ord("j"): "back10",
             ord("l"): "fwd10", ord("p"): "prev", ord("n"): "next", ord("-"): "slower",
             ord("+"): "faster", ord("="): "faster", ord("i"): "info",
@@ -240,7 +332,8 @@ class Player:
         next_t = time.perf_counter()
         while not self.quit:
             if self.seek_req is not None:
-                self.seek(self.seek_req / 1000 * (self.n - 1))
+                first, last = self.bounds()
+                self.seek(first + self.seek_req / 1000 * (last - first))
                 self.seek_req = None
             elif not self.paused:
                 if not self.next_frame():  # end of video
@@ -257,6 +350,8 @@ class Player:
 
             if self.paused:
                 wait, next_t = 30, time.perf_counter()
+            elif self.at_live_edge():
+                wait, next_t = 1, time.perf_counter()  # next_frame() already waits for the camera
             else:
                 # running deadline, so if waitKey oversleeps the next frame makes up for it
                 frame_time = 1.0 / (self.fps * self.speed)
@@ -270,7 +365,7 @@ class Player:
             if key in keymap:
                 self.do(keymap[key])
 
-        self.cap.release()
+        self.close()
         cv2.destroyAllWindows()
 
 

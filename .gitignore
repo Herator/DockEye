@@ -10,3 +10,4 @@ model/
 .vscode/
 output/
 dataset/fishing_cls/
+config/MDZones_live.json

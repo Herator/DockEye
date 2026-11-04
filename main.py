@@ -1,4 +1,5 @@
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import cv2
@@ -15,6 +16,8 @@ from src.events import EventLog
 # -------------------------------------
 MEDIA = "media/"
 MD_ZONES_FILE = "config/MDZones.json"
+LIVE_ZONES_FILE = "config/MDZones_live.json"  # the camera isn't where the dock videos were filmed
+CAMERA = "0"  # webcam number or stream URL, first in the list and opened on start
 MD_COLORS = {"person": (0, 0, 255), "boat": (255, 0, 0)}  # zone outlines
 COLORS = {"person": (0, 165, 255), "boat": (0, 200, 0)}    # boxes (BGR)
 # COLORS["person_fishing"] = (0, 0, 255)  # fishing dropped
@@ -32,27 +35,26 @@ cv2.setNumThreads(4)  # all cores was slower while YOLO runs
 #               MEDIA
 # -------------------------------------
 paths = collect(sys.argv[1:] or [MEDIA])
+if not sys.argv[1:]:
+    paths.insert(0, CAMERA)
 if not paths:
-    raise SystemExit(f"No videos found in {MEDIA!r}")
-
-cam = cv2.VideoCapture(paths[0])
-ret, first = cam.read()
-
-# skip black frames at the start
-while ret and first.mean() < 10:
-    ret, first = cam.read()
-cam.release()
-if not ret:
-    raise SystemExit(f"{paths[0]} has no non-black frames")
-
-cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
+    raise SystemExit(f"No videos found in {sys.argv[1:]}")
 
 # ------------------------------------
 #                ZONES
 # ------------------------------------
-md_zones = make_zones(first, MD_COLORS, MD_ZONES_FILE)
-cv2.destroyWindow("Video")
-small_zones = {k: [[int(x * MOTION_SCALE), int(y * MOTION_SCALE)] for x, y in pts] for k, pts in md_zones.items()}
+zones = {}  # live? -> (zones, half size zones). The camera can't use the dock zones
+
+
+def get_zones(live, frame):
+    if live not in zones:
+        cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
+        z = make_zones(frame, MD_COLORS, LIVE_ZONES_FILE if live else MD_ZONES_FILE)
+        cv2.destroyWindow("Video")
+        zones[live] = z, {k: [[int(x * MOTION_SCALE), int(y * MOTION_SCALE)] for x, y in pts] for k, pts in z.items()}
+    return zones[live]
+
+
 small_boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # half of boat_kernel
 
 # ------------------------------------
@@ -72,27 +74,32 @@ state = {}
 
 
 def detect(frame):
+    if player.live not in zones and frame.mean() < 10:
+        return frame  # black start or camera warming up, wait for something to click zones on
+
     video = player.paths[player.i]
-    if video != log.video:  # new video, start over
+    if video != state.get("video"):  # new video, start over
         if state.get("job"):
             state["job"].result()
-        log.start_video(video)
-        state.update(detector=Detector(md_zones), awake=True, last_active=0.0,
-                     last_yolo=float("-inf"), tracks={}, job=None)
+        md_zones, small_zones = get_zones(player.live, frame)
+        # live: put the start time in the name, start_s/end_s are seconds after it
+        log.start_video(f"live{video}_{time.strftime('%Y%m%d-%H%M%S')}" if player.live else video)
+        state.update(video=video, zones=md_zones, small_zones=small_zones, detector=Detector(md_zones),
+                     awake=True, last_active=0.0, last_yolo=float("-inf"), tracks={}, job=None)
         # learningRate=1 forgets the last clip's background
         small = cv2.resize(frame, None, fx=MOTION_SCALE, fy=MOTION_SCALE, interpolation=cv2.INTER_AREA)
         person_backSub.apply(small, learningRate=1)
         boat_backSub.apply(cv2.GaussianBlur(small, (21, 21), 0), learningRate=1)
 
-    t = player.pos / player.fps
+    t = player.t
     if t < state["last_yolo"]:  # jumped backwards
         state["last_yolo"] = float("-inf")
 
     if player.pos % MOTION_EVERY == 0:
         small = cv2.resize(frame, None, fx=MOTION_SCALE, fy=MOTION_SCALE, interpolation=cv2.INTER_AREA)
         a = MOTION_SCALE ** 2  # min areas shrink with the frame
-        person_boxes = motion_detection(small, small_zones["person"], 350 * a, 150, person_backSub, person_kernel)
-        boat_boxes = motion_detection(small, small_zones["boat"], 1000 * a, 50, boat_backSub, small_boat_kernel, blur=True)
+        person_boxes = motion_detection(small, state["small_zones"]["person"], 350 * a, 150, person_backSub, person_kernel)
+        boat_boxes = motion_detection(small, state["small_zones"]["boat"], 1000 * a, 50, boat_backSub, small_boat_kernel, blur=True)
         if t >= WARMUP_S and (person_boxes or boat_boxes):
             state.update(awake=True, last_active=t)
 
@@ -128,7 +135,7 @@ def detect(frame):
     # fishing dropped, the status line used to end with:  Fishing: {log.count.get('person_fishing', 0)}
 
     # zones last, or the lines would count as motion
-    draw_the_zone(frame, md_zones, MD_COLORS)
+    draw_the_zone(frame, state["zones"], MD_COLORS)
     return frame
 
 

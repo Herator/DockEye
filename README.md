@@ -37,7 +37,7 @@ You need Python 3.10 or newer and Git. The first run also needs internet, to dow
    python main.py
    ```
 
-   This plays every video in `media/`. To play just one, give its path: `python main.py media/boat_1.mp4`.
+   It starts on the webcam. Press `v` to get the list and click a video to play it instead, or "Live camera 0" at the top to go back. To play just one video, give its path: `python main.py media/boat_1.mp4`.
 
 ## First run
 
@@ -47,6 +47,16 @@ The dock and water zones for our camera are already saved in `config/MDZones.jso
 
 Events end up in `output/events.csv` and snapshots in `output/snapshots/`.
 
+## Live camera
+
+The camera has its own zones in `config/MDZones_live.json`, since it doesn't see the same thing as our dock videos. The first time you open it you click them like above, and after that they're loaded.
+
+While it runs it keeps the last 2 minutes in memory (`BUFFER_S` in `src/mediaPlayer.py`). So if you miss something you can pause or drag the slider back and watch it again, and it keeps recording in the meantime. The Live button turns blue when you're behind, click it (or press End) to get back. Detection only runs on what you're watching though, so anything that happens live while you're looking back isn't logged.
+
+Events from the camera go in the same `output/events.csv`. The video column is the time you opened the camera, like `live0_20261104-112955`, and start/end are seconds after that.
+
+An IP camera should work too if you give it the stream URL, `python main.py rtsp://user:pass@192.168.1.20/stream`. We have only tried a webcam.
+
 ## Controls
 
 | Key | What it does |
@@ -54,6 +64,7 @@ Events end up in `output/events.csv` and snapshots in `output/snapshots/`.
 | Space | Play / pause |
 | Left / Right arrow | One frame back / forward |
 | `j` / `l` | 10 seconds back / forward |
+| End | Back to live (camera) / last frame (video) |
 | `p` / `n` | Previous / next video |
 | `-` / `+` | Slower / faster |
 | `v` | Show the video list (click one to play it) |
@@ -73,7 +84,7 @@ From the project folder, with the virtual environment active:
 python -m unittest discover -s tests
 ```
 
-All 10 tests should pass.
+All 13 tests should pass.
 
 ## If something goes wrong
 
