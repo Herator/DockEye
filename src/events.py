@@ -27,11 +27,11 @@ class EventLog:
         self.video, self.count = video, {}
 
     def update(self, cls, tracks, frame, t):
-        for tid, (x, y, w, h) in tracks.items():
+        for tid, box in tracks.items():
             ev = self.active.setdefault((cls, tid), {"start": t, "last": t, "snapshot": ""})
             ev["last"] = t
             if not ev["snapshot"] and t - ev["start"] >= self.min_seconds:
-                ev["snapshot"] = self._snapshot(cls, tid, frame, (x, y, w, h), t)
+                ev["snapshot"] = self._snapshot(cls, tid, frame, box, t)
                 self.count[cls] = self.count.get(cls, 0) + 1
         for key in [k for k, ev in self.active.items()
                     if k[0] == cls and k[1] not in tracks and t - ev["last"] > self.gap_seconds]:
@@ -66,3 +66,24 @@ class EventLog:
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
         cv2.imwrite(path, img)
         return path
+
+
+def boxes_at(results, t, max_age=1.0):
+    """Boxes for time t from YOLO results [(time, tracks)] sorted by time.
+
+    Uses the last result at or before t, and moves tracks that also are in the next result
+    linearly towards it. Nothing if that result is older than max_age."""
+    before = [r for r in results if r[0] <= t]
+    if not before or t - before[-1][0] > max_age:
+        return {}
+    t0, a = before[-1]
+    out = {cls: dict(d) for cls, d in a.items()}
+    after = [r for r in results if r[0] > t]
+    if after and after[0][0] - t0 <= max_age:
+        t1, b = after[0]
+        k = (t - t0) / (t1 - t0)
+        for cls, d in a.items():
+            for tid, box in d.items():
+                if tid in b.get(cls, {}):
+                    out[cls][tid] = tuple(round(p + k * (q - p)) for p, q in zip(box, b[cls][tid]))
+    return out

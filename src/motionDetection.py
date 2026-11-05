@@ -7,7 +7,6 @@ person_backSub = cv2.createBackgroundSubtractorMOG2(detectShadows=True, varThres
 boat_backSub = cv2.createBackgroundSubtractorMOG2(detectShadows=True, varThreshold=50)
 
 person_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
 
 
 def motion_detection_mask(image, points):
