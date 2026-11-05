@@ -1,2 +1,7 @@
 numpy>=2,<3
 opencv-python>=4.10,<5
+ultralytics~=8.4.200
+lap>=0.5.12
+onnxruntime>=1.20
+onnx>=1.17
+onnxslim>=0.1

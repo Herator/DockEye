@@ -68,11 +68,11 @@ class PlayerResetTests(unittest.TestCase):
         def exercise(player):
             state = player.boxes.__globals__
             player.render()
-            first_person, first_boat = state['pearson_backSub'], state['boat_backSub']
+            first_person, first_boat = state['person_backSub'], state['boat_backSub']
             self.assertIsNotNone(first_person.getBackgroundImage())
             self.assertIsNotNone(first_boat.getBackgroundImage())
             player.seek(5)
-            self.assertIsNot(first_person, state['pearson_backSub'])
+            self.assertIsNot(first_person, state['person_backSub'])
             self.assertIsNot(first_boat, state['boat_backSub'])
             self.assertIsNone(state['last_boat_mask'])
             player.render()

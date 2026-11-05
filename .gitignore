@@ -8,3 +8,6 @@ media/**/*.[mM][kK][vV]
 media/**/*.[wW][eE][bB][mM]
 model/
 .vscode/
+output/
+dataset/fishing_cls/
+config/MDZones_live.json

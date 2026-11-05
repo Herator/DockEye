@@ -29,6 +29,7 @@ class TestPausedTuning(unittest.TestCase):
         player.i, player.pos = 0, 0
         player.paused = True
         player.warmup_remaining = 3
+        player.live = False  # set by open() in the real player
         player.cache_key, player.cache = None, None
         player.toggles = {'flip': False, 'boxes': True, 'info': False, 'list': False}
         first = player.render()
