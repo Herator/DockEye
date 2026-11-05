@@ -5,8 +5,9 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 import cv2
+import numpy as np
 
-from src.motionDetection import motion_detection, boat_backSub, person_backSub, person_kernel
+from src.motionDetection import motion_detection, boxes_from_foreground, boat_backSub, person_backSub, person_kernel
 from src.zones import make_zones, draw_the_zone
 from src.mediaPlayer import Player, collect
 from src.detector import Detector
@@ -64,6 +65,20 @@ small_boat_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))  # boat
 # ------------------------------------
 #          PER-FRAME DETECTION
 # ------------------------------------
+boat_settings = {"area": 1000, "threshold": 50, "shadow_only": 0}  # area at full size, sliders in "Boat tuning"
+last_boat_mask = None  # small-size MOG2 mask, kept so sliders can redraw a paused frame
+last_person_boxes = []
+
+
+def reset_detection():
+    """Player calls this on seek, video change, flip and boxes on: forget the background."""
+    global person_backSub, boat_backSub, last_boat_mask, last_person_boxes
+    person_backSub = cv2.createBackgroundSubtractorMOG2(detectShadows=True, varThreshold=20)
+    boat_backSub = cv2.createBackgroundSubtractorMOG2(detectShadows=True, varThreshold=50)
+    last_boat_mask = None
+    last_person_boxes = []
+
+
 log = EventLog()
 yolo = ThreadPoolExecutor(max_workers=1)  # background, so the video never waits for YOLO
 state = {"yolo_ms": 0.0, "shown": deque(maxlen=30)}
@@ -86,7 +101,8 @@ def timed_yolo(detector, frame):
 #     return tracks
 
 
-def detect(frame):
+def detect(frame, reuse_mask=False):
+    global last_boat_mask, last_person_boxes
     if player.live not in zones and frame.mean() < 10:
         return frame  # black start or camera warming up, wait for something to click zones on
 
@@ -114,12 +130,20 @@ def detect(frame):
     while len(state["buf"]) > 1 and state["buf"][1][0] <= t - DELAY_S:
         state["buf"].popleft()  # after a reset the first frame is held until DELAY_S is buffered
 
-    if player.pos % MOTION_EVERY == 0:
+    # reuse_mask: a slider moved on a paused frame, redo the thresholds on the old mask
+    if player.pos % MOTION_EVERY == 0 or reuse_mask:
         small = cv2.resize(frame, None, fx=MOTION_SCALE, fy=MOTION_SCALE, interpolation=cv2.INTER_AREA)
         a = MOTION_SCALE ** 2  # min areas shrink with the frame
-        person_boxes = motion_detection(small, state["small_zones"]["person"], 350 * a, 150, person_backSub, person_kernel)
-        boat_boxes = motion_detection(small, state["small_zones"]["boat"], 1000 * a, 50, boat_backSub, small_boat_kernel, blur=True)
-        if t >= WARMUP_S and (person_boxes or boat_boxes):
+        fresh = not reuse_mask or last_boat_mask is None
+        if fresh:
+            last_person_boxes = motion_detection(small, state["small_zones"]["person"], 350 * a, 150, person_backSub, person_kernel)
+            last_boat_mask = boat_backSub.apply(cv2.GaussianBlur(small, (21, 21), 0))
+        boat_boxes, boat_selected = boxes_from_foreground(
+            last_boat_mask, state["small_zones"]["boat"], boat_settings["area"] * a,
+            boat_settings["threshold"], small_boat_kernel, bool(boat_settings["shadow_only"]))
+        cv2.imshow("Boat mask before threshold", last_boat_mask)
+        cv2.imshow("Boat mask after threshold", boat_selected)
+        if fresh and t >= WARMUP_S and (last_person_boxes or boat_boxes):
             state.update(awake=True, last_active=t)
 
     # YOLO done? Kept by its time, the delayed frame below is drawn between two results
@@ -166,8 +190,26 @@ def detect(frame):
     return frame
 
 
-player = Player(paths, detect)
-player.toggles["boxes"] = True  # detection on from the start ('o' toggles)
+cv2.namedWindow("Boat tuning", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("Boat tuning", 650, 260)
+panel = np.zeros((100, 650, 3), dtype=np.uint8)
+cv2.putText(panel, "Mode 0: threshold   |   Mode 1: grey only", (15, 35),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+cv2.putText(panel, "Threshold slider works in mode 0", (15, 70),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+cv2.imshow("Boat tuning", panel)
+cv2.createTrackbar("Minimum area", "Boat tuning", boat_settings["area"], 5000,
+                   lambda value: boat_settings.__setitem__("area", value))
+cv2.createTrackbar("Threshold (mode 0)", "Boat tuning", boat_settings["threshold"], 255,
+                   lambda value: boat_settings.__setitem__("threshold", value))
+cv2.createTrackbar("Mode 0 or 1", "Boat tuning", boat_settings["shadow_only"], 1,
+                   lambda value: boat_settings.__setitem__("shadow_only", value))
+
+player = Player(paths, detect,
+                settings_key=lambda: tuple(boat_settings.values()),
+                reprocess=lambda frame: detect(frame, reuse_mask=True),
+                reset_detection=reset_detection)
+player.toggles["boxes"] = True  # detection on by default, 'o' / Process button toggles it
 player.run()
 if state.get("job"):
     state["job"].result()

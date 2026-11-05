@@ -50,9 +50,13 @@ class Player:
     TOGGLES = [("Videos", "list"), ("Info", "info"), ("Flip", "flip"),
                ("Boxes", "boxes"), ("Loop", "loop")]
 
-    def __init__(self, paths, boxes=lambda frame: frame):
+    def __init__(self, paths, boxes=lambda frame: frame, settings_key=None, reprocess=None, reset_detection=None):
         self.paths = paths
         self.boxes = boxes
+        self.settings_key = settings_key
+        self.reprocess = reprocess
+        self.reset_detection = reset_detection
+        self.warmup_remaining = 0
         self.cache_key, self.cache = None, None
         self.cap = None
         self.thread = None
@@ -68,6 +72,13 @@ class Player:
         self.open(0)
 
     # ---------- video handling ----------
+    def restart_detection(self):
+        self.cache_key, self.cache = None, None
+        if self.reset_detection is not None:
+            self.reset_detection()
+            # Approximate three seconds of processed frames, not wall-clock time.
+            self.warmup_remaining = max(1, round(self.fps * 3))
+
     def open(self, i):
         self.close()
         self.i = i % len(self.paths)
@@ -89,6 +100,8 @@ class Player:
             self.frame = np.zeros((540, W, 3), np.uint8)
             cv2.putText(self.frame, f"Could not open {display_name(self.paths[self.i])}", (20, 270),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+        else:
+            self.restart_detection()
 
     def close(self):
         if self.thread is not None:
@@ -156,11 +169,14 @@ class Player:
         if self.live:
             return self.show(pos)
         pos = max(0, min(self.n - 1, int(pos)))
+        previous_pos = self.pos
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
         ok, f = self.cap.read()
         if ok:
             self.frame = f
             self.pos = pos
+            if pos != previous_pos:
+                self.restart_detection()
         return ok
 
     # ---------- actions ----------
@@ -189,6 +205,8 @@ class Player:
             self.speed = min(4.0, self.speed * 2)
         elif name in self.toggles:
             self.toggles[name] = not self.toggles[name]
+            if name == "flip" or (name == "boxes" and self.toggles[name]):
+                self.restart_detection()
 
     # ---------- UI ----------
     def buttons(self):
@@ -249,19 +267,31 @@ class Player:
         return bar
 
     def render(self):
-        # detect once per frame, pausing shouldn't feed MOG2 the same frame
-        key = (self.i, self.pos, self.toggles["flip"], self.toggles["boxes"])
+        # only boxes each frame once, so pausing doesn't feed the same frame
+        # to the background subtractors over and over
+        frame_key = (self.i, self.pos, self.toggles["flip"], self.toggles["boxes"])
+        key = (frame_key, self.settings_key() if self.settings_key else None)
         if key != self.cache_key:
             f = self.frame.copy()
             if self.toggles["flip"]:
                 f = cv2.flip(f, 1)
             if self.toggles["boxes"]:
-                f = self.boxes(f)
+                same_frame = self.cache_key is not None and self.cache_key[0] == frame_key
+                if same_frame and self.reprocess is not None:
+                    f = self.reprocess(f)
+                else:
+                    f = self.boxes(f)
+                    if self.warmup_remaining > 0:
+                        self.warmup_remaining -= 1
             self.cache_key, self.cache = key, f
         f = self.cache
         h = int(f.shape[0] * W / f.shape[1])
         f = cv2.resize(f, (W, h))
         self.video_h = h
+        if self.toggles["boxes"] and self.warmup_remaining > 0:
+            text = "Learning background: detections may be unreliable"
+            cv2.putText(f, text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.putText(f, text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 1, cv2.LINE_AA)
         if self.toggles["info"]:
             if self.at_live_edge():
                 where = f"LIVE  {self.t:.0f}s"

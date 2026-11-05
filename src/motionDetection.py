@@ -16,19 +16,26 @@ def motion_detection_mask(image, points):
     return cv2.bitwise_and(image, image, mask=mask)
 
 
+def boxes_from_foreground(fg_mask, zone, min_area, threshold, kernel, shadow_only=False):
+    """Boxes from a MOG2 mask, and the thresholded mask before zoning.
+    shadow_only: keep only the grey (127) shadow pixels instead of thresholding."""
+    if shadow_only:
+        mask_thresh = cv2.inRange(fg_mask, 127, 127)
+    else:
+        # shadows are 127, a threshold above that drops them
+        _, mask_thresh = cv2.threshold(fg_mask, threshold, 255, cv2.THRESH_BINARY)
+    masked_zone = motion_detection_mask(mask_thresh, zone)
+    # join nearby blobs so one person is one box
+    mask_merged = cv2.morphologyEx(masked_zone, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(mask_merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) > min_area], mask_thresh
+
+
 def motion_detection(frame, zone, min_area, min_value, backSub, kernel, blur=False):
     """Boxes (x, y, w, h) of moving things in the zone bigger than min_area."""
     if blur:
         frame = cv2.GaussianBlur(frame, (21, 21), 0)
 
     fg_mask = backSub.apply(frame)
-
-    # shadows are 127, min_value above that drops them
-    _, mask_thresh = cv2.threshold(fg_mask, min_value, 255, cv2.THRESH_BINARY)
-    masked_zone = motion_detection_mask(mask_thresh, zone)
-
-    # join nearby blobs so one person is one box
-    mask_merged = cv2.morphologyEx(masked_zone, cv2.MORPH_CLOSE, kernel)
-
-    contours, _ = cv2.findContours(mask_merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    return [cv2.boundingRect(c) for c in contours if cv2.contourArea(c) > min_area]
+    boxes, _ = boxes_from_foreground(fg_mask, zone, min_area, min_value, kernel)
+    return boxes
